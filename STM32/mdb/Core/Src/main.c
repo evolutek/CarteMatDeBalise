@@ -23,7 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "rplidar.h"
-#include "ringbuffer.h"
+#include "rbuf.h"
+//#include "ringbuffer.h"
 #include "byteswap.h"
 /* USER CODE END Includes */
 
@@ -68,20 +69,25 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-volatile uint8_t UART1_rxBuffer[1024] = {0};
-ringbuffer_t ringBuffer;
+RBUF_HandleTypeDef *rbuf;
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	ringbuffer_dma_add_overflow(&ringBuffer);
-//	printf("reste: %u\n\r", (unsigned)(512 - huart1.hdmarx->Instance->CNDTR));
-}
+//volatile uint8_t UART1_rxBuffer[1024] = {0};
+//ringbuffer_t ringBuffer;
 
-void ringbuffer_read_exactly(ringbuffer_t* buffer, uint8_t *data, uint32_t max_size) {
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+//	ringbuffer_dma_add_overflow(&ringBuffer);
+////	printf("reste: %u\n\r", (unsigned)(512 - huart1.hdmarx->Instance->CNDTR));
+//}
+//
+void ringbuffer_read_exactly(uint8_t *data, uint32_t max_size) {
 	uint32_t i = 0;
 
 	while (i < max_size) {
-		ringbuffer_dma_set_written_size(buffer, 512 - huart1.hdmarx->Instance->CNDTR);
-		i += ringbuffer_read(buffer, &data[i], max_size - i);
+		if (RBUF_Available(rbuf)) {
+			RBUF_Pop(rbuf, &data[i++]);
+		}
+//		ringbuffer_dma_set_written_size(buffer, 512 - huart1.hdmarx->Instance->CNDTR);
+//		i += ringbuffer_read(buffer, &data[i], max_size - i);
 	}
 }
 
@@ -124,9 +130,12 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  rbuf = RBUF_Init(1, 1024);
+
+
   // init ringbuffer and DMA receiving
-  ringbuffer_init(&ringBuffer, UART1_rxBuffer, 512);
-  HAL_UART_Receive_DMA(&huart1, UART1_rxBuffer, 512);
+//  ringbuffer_init(&ringBuffer, UART1_rxBuffer, 512);
+//  HAL_UART_Receive_DMA(&huart1, UART1_rxBuffer, 512);
 
   HAL_GPIO_WritePin(LIDAR_PWM_GPIO_Port, LIDAR_PWM_Pin, 0);
 
@@ -174,7 +183,7 @@ int main(void)
 		  case DESCRIPTOR:
 			  // Read descriptor
 			  printf("%s\n\r", desc);
-			  ringbuffer_read_exactly(&ringBuffer, (uint8_t *)&scan_desc, sizeof(scan_desc));
+			  ringbuffer_read_exactly((uint8_t *)&scan_desc, sizeof(scan_desc));
 
 			  // Check descriptor fields
 			  if (scan_desc.start_flag1 != START_FLAG1){
@@ -202,7 +211,7 @@ int main(void)
 		  case SCANNING:
 			  HAL_Delay(1);
 //			  printf("%s\n\r", scan);
-			  ringbuffer_read_exactly(&ringBuffer, (uint8_t *)&frame, sizeof(frame));
+			  ringbuffer_read_exactly((uint8_t *)&frame, sizeof(frame));
 //			  frame.angle_q6 = swap_uint16(frame.angle_q6);
 //			  frame.distance_q2 = swap_uint16(frame.distance_q2);
 //			  printf("angle: %u\n\r", (unsigned)(frame.angle_q6));
